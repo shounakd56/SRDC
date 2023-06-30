@@ -7,6 +7,17 @@ import torch.nn.functional as F
 from utils.folder import ImageFolder
 import numpy as np
 import cv2
+import os
+
+def list_folders_only(directory):
+    folders = []
+    for item in os.listdir(directory):
+        item_path = os.path.join(directory, item)
+        if os.path.isdir(item_path):
+            folders.append(item)
+    return folders
+
+# Example usage:
 
 def generate_dataloader(args):
     # Data loading code
@@ -14,11 +25,15 @@ def generate_dataloader(args):
     traindir_t = os.path.join(args.data_path_target, args.tar)
     valdir = os.path.join(args.data_path_target, args.tar)
     valdir_t = os.path.join(args.data_path_target_t, args.tar_t)
-    
-    classes = os.listdir(traindir)
+ #   folders = list_folders_only(traindir)
+  #  print(folders)
+
+    classes = list_folders_only(traindir)
     classes.sort()
+    print(classes)
     ins_num_for_each_cls_src = torch.cuda.FloatTensor(args.num_classes)
     for i,c in enumerate(classes):
+        print(i,c)
         ins_num_for_each_cls_src[i] = len(os.listdir(os.path.join(traindir, c)))
     
     if not os.path.isdir(traindir):
