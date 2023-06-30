@@ -8,6 +8,25 @@ from torch.autograd import Variable
 from utils.kernel_kmeans import KernelKMeans
 import gc
 import ipdb
+def entropy(input_):
+    bs = input_.size(0)
+    epsilon = 1e-10
+    entropy = -input_ * torch.log2(input_ + epsilon)
+    entropy = torch.sum(entropy, dim=1)
+    return entropy 
+
+import torch.nn as nn
+def im(outputs_test, gent=True):
+    epsilon = 1e-10
+    softmax_out = nn.Softmax(dim=1)(outputs_test)
+    entropy_loss = torch.mean(entropy(softmax_out))
+    if gent:
+        msoftmax = softmax_out.mean(dim=0)
+        gentropy_loss = torch.sum(-msoftmax * torch.log2(msoftmax + epsilon))
+        entropy_loss -= gentropy_loss
+    im_loss = entropy_loss * 1.0
+    return im_loss
+
 
 def train(train_loader_source, train_loader_source_batch, train_loader_target, train_loader_target_batch, model, learn_cen, learn_cen_2, criterion_cons, optimizer, itern, epoch, new_epoch_flag, src_cs, args):
     batch_time = AverageMeter()
@@ -47,7 +66,7 @@ def train(train_loader_source, train_loader_source_batch, train_loader_target, t
             (input_target, input_target_dup, input_target_gray, target_target, _) = train_loader_target_batch.__next__()[1]
         else:
             (input_target, target_target, _) = train_loader_target_batch.__next__()[1]
-  #  target_target = target_target.cuda(async=True)
+    target_target = target_target.cuda(non_blocking=True)
     input_target_var = Variable(input_target)
     target_target_var = Variable(target_target)
     if args.aug_tar_agree:
@@ -86,7 +105,7 @@ def train(train_loader_source, train_loader_source_batch, train_loader_target, t
         except StopIteration:
             train_loader_source_batch = enumerate(train_loader_source)
             (input_source, target_source, index) = train_loader_source_batch.__next__()[1]
-      #  target_source = target_source.cuda(async=True)
+        target_source = target_source.cuda(non_blocking=True)
         input_source_var = Variable(input_source)
         target_source_var = Variable(target_source)
         
@@ -190,7 +209,7 @@ def validate(val_loader, model, criterion, epoch, args):
     
     end = time.time()
     for i, (input, target, _) in enumerate(val_loader):
-      #  target = target.cuda(async=True)
+        target = target.cuda(non_blocking=True)
         input_var = Variable(input)
         target_var = Variable(target)
 
@@ -198,6 +217,11 @@ def validate(val_loader, model, criterion, epoch, args):
         with torch.no_grad():
             _, _, output = model(input_var)
             loss = criterion(output, target_var)
+            loss_im = im(output.view(-1, 31))
+            loss=loss+0.1*loss_im
+            #print("219",loss,loss_im)
+
+
 
         # compute and record loss and accuracy
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
@@ -262,7 +286,7 @@ def validate_compute_cen(val_loader_target, val_loader_source, model, criterion,
     if compute_cen:
         for i, (input, target, index) in enumerate(val_loader_source): # the iterarion in the source dataset
             input_var = Variable(input)
-          #  target = target.cuda(async=True)
+            target = target.cuda(non_blocking=True)
             with torch.no_grad():
                 feature, feature_2, output = model(input_var)
             source_features[index.cuda(), :] = feature.data.clone()
@@ -292,7 +316,7 @@ def validate_compute_cen(val_loader_target, val_loader_source, model, criterion,
     end = time.time()
     for i, (input, target, index) in enumerate(val_loader_target): # the iterarion in the target dataset
         data_time.update(time.time() - end)
-       # target = target.cuda(async=True)
+        target = target.cuda(non_blocking=True)
         input_var = Variable(input)
         target_var = Variable(target)
         
@@ -318,6 +342,11 @@ def validate_compute_cen(val_loader_target, val_loader_source, model, criterion,
         
         # compute and record loss and accuracy
         loss = criterion(output, target_var)
+        loss_im = im(output.view(-1, 31))
+        loss=loss+0.1*loss_im
+        #print("345",loss,loss_im)
+
+
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         total_vector, correct_vector = accuracy_for_each_class(output.data, target, total_vector, correct_vector) # compute class-wise accuracy
         losses.update(loss.data.item(), input.size(0))
@@ -648,7 +677,7 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
         
     return res
@@ -665,4 +694,3 @@ def accuracy_for_each_class(output, target, total_vector, correct_vector):
         correct_vector[torch.LongTensor([target[i]])] += correct[i]
     
     return total_vector, correct_vector
-
