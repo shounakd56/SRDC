@@ -40,7 +40,7 @@ def main():
     
     # define model
     model = Model_Construct(args)
-    print(model)
+    #print(model)
     model = torch.nn.DataParallel(model).cuda() # define multiple GPUs
     
     # define learnable cluster centers
